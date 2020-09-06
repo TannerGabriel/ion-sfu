@@ -15,7 +15,7 @@ import (
 const (
 	// bandwidth range(kbps)
 	minBandwidth = 200
-	maxSize      = 100
+	maxSize      = 1024
 
 	// tcc stuff
 	tccExtMapID = 3
@@ -225,7 +225,7 @@ func (v *WebRTCVideoReceiver) receiveRTP() {
 
 		v.buffer.Push(pkt)
 
-		if v.feedback == webrtc.TypeRTCPFBTransportCC {
+		if v.tccCycle > 0 {
 			//store arrival time
 			timestampUs := time.Now().UnixNano() / 1000
 			rtpTCC := rtp.TransportCCExtension{}
@@ -318,6 +318,11 @@ func (v *WebRTCVideoReceiver) rembLoop() {
 			bw = uint64(v.maxBandwidth)
 		}
 
+		//set remb max when tcc open
+		if v.tccCycle > 0 {
+			bw = 10000
+		}
+
 		remb := &rtcp.ReceiverEstimatedMaximumBitrate{
 			SenderSSRC: v.buffer.GetSSRC(),
 			Bitrate:    bw * 1000,
@@ -330,7 +335,7 @@ func (v *WebRTCVideoReceiver) rembLoop() {
 
 func (v *WebRTCVideoReceiver) tccLoop() {
 	feedbackPacketCount := uint8(0)
-	t := time.NewTicker(time.Duration(v.tccCycle) * time.Second)
+	t := time.NewTicker(time.Duration(v.tccCycle) * time.Millisecond)
 	defer t.Stop()
 	for {
 		if v.stop {
@@ -340,7 +345,7 @@ func (v *WebRTCVideoReceiver) tccLoop() {
 
 		cap := len(v.rtpExtInfoChan)
 		if cap == 0 {
-			return
+			continue
 		}
 
 		// get all rtp extension infos from channel
